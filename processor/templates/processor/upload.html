@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload DOCX File</title>
+</head>
+<body>
+    <h2>Upload a DOCX file to convert it into anonymized XML</h2>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Upload and Convert</button>
+    </form>
+</body>
+</html>
