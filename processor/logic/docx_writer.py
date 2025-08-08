@@ -21,7 +21,80 @@ def generate_random_text(original_text):
     if original_text.isspace():
         return original_text
     
-    # Generate random text with similar characteristics
+    # Handle numbers - replace with random numbers of similar magnitude
+    clean_text = original_text.strip()
+    
+    # Debug: Print what we're processing
+    print(f"Processing text: '{original_text}'")
+    
+    # First, try to extract just the digits and decimal point
+    import re
+    
+    digits_only = re.sub(r'[^\d\.]', '', clean_text)
+    print(f"Digits only: '{digits_only}'")
+    
+    # Check if it's a valid number
+    if digits_only and (digits_only.isdigit() or ('.' in digits_only and digits_only.replace('.', '').isdigit())):
+        print(f"Detected as number: '{digits_only}'")
+        
+        try:
+            random_str = ""  # Initialize random_str
+            
+            if '.' in digits_only:
+                # It's a decimal number
+                original_float = float(digits_only)
+                if original_float.is_integer():
+                    # Integer with decimal point
+                    # Count digits in the original number
+                    digit_count = len(digits_only.replace('.', ''))
+                    # Generate random number with same digit count
+                    min_val = 10 ** (digit_count - 1)
+                    max_val = (10 ** digit_count) - 1
+                    random_num = fake.random_int(min=min_val, max=max_val)
+                    random_str = str(random_num)
+                else:
+                    # Real decimal
+                    # Count digits before and after decimal
+                    parts = digits_only.split('.')
+                    before_decimal = len(parts[0])
+                    after_decimal = len(parts[1])
+                    
+                    # Generate random number with same digit structure
+                    min_val = 10 ** (before_decimal - 1) if before_decimal > 1 else 1
+                    max_val = (10 ** before_decimal) - 1
+                    random_whole = fake.random_int(min=min_val, max=max_val)
+                    
+                    # Generate decimal part with same number of digits
+                    random_decimal = fake.random_int(min=0, max=(10 ** after_decimal) - 1)
+                    random_str = f"{random_whole}.{random_decimal:0{after_decimal}d}"
+            else:
+                # It's an integer
+                # Count digits in the original number
+                digit_count = len(digits_only)
+                # Generate random number with same digit count
+                min_val = 10 ** (digit_count - 1)
+                max_val = (10 ** digit_count) - 1
+                random_num = fake.random_int(min=min_val, max=max_val)
+                random_str = str(random_num)
+            
+            # Preserve the original formatting by replacing digits with random digits
+            result = clean_text
+            # Replace the digits part with our random number
+            if '.' in digits_only:
+                # For decimals, replace the whole number part
+                result = re.sub(r'\d+\.\d+', random_str, clean_text)
+            else:
+                # For integers, replace the digits
+                result = re.sub(r'\d+', random_str, clean_text)
+            
+            print(f"Replaced '{original_text}' with '{result}'")
+            return result
+            
+        except ValueError as e:
+            print(f"Error processing number: {e}")
+            pass
+    
+    # Generate random text with similar characteristics for non-numbers
     words = original_text.split()
     if not words:
         return original_text
@@ -42,7 +115,7 @@ def generate_random_text(original_text):
                 else:
                     random_word = random_word[:length]
         else:
-            # Keep non-alphabetic content (numbers, punctuation) as is
+            # Keep non-alphabetic content (punctuation) as is
             random_word = word
         
         random_words.append(random_word)
