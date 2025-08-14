@@ -6,7 +6,7 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from .forms import UploadDocxForm
 
-from .logic.docx_writer import modify_docx_inplace
+from .logic.docx_writer import modify_docx_final
 
 
 
@@ -30,7 +30,7 @@ def upload_file(request):
             output_path = os.path.join(settings.OUTPUT_DIR, output_filename)
             
             # Modify the document in-place by parsing its XML
-            modify_docx_inplace(file_path, output_path)
+            modify_docx_final(file_path, output_path)
 
             # Serve the modified docx file as download
             with open(output_path, 'rb') as f:
