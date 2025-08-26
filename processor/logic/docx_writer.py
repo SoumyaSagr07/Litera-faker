@@ -8,6 +8,30 @@ from docx.oxml.ns import qn
 # Initialize Faker for generating random content
 fake = Faker()
 
+def replace_urls_with_random_text(text):
+    """
+    Replace URLs in text with random text of the same length
+    """
+    if not text:
+        return text
+    
+    # Pattern to match various URL formats
+    url_patterns = [
+        r'https?://[^\s<>"{}|\\^`\[\]]+',  # http/https URLs
+        r'www\.[^\s<>"{}|\\^`\[\]]+',     # www URLs
+        r'[^\s<>"{}|\\^`\[\]]+\.(com|org|net|io|co|biz|edu|gov)[^\s<>"{}|\\^`\[\]]*',  # Domain patterns
+    ]
+    
+    new_text = text
+    for pattern in url_patterns:
+        matches = re.findall(pattern, new_text)
+        for match in matches:
+            # Generate random text of the same length
+            random_text = ''.join(random.choices(string.ascii_letters + string.digits, k=len(match)))
+            new_text = new_text.replace(match, random_text)
+    
+    return new_text
+
 def categorize_token(token):
     """
     Categorize a token to determine how it should be processed.
@@ -39,9 +63,12 @@ def generate_length_preserving_text(original_text, padding_char='y'):
     if not original_text or not original_text.strip():
         return original_text
 
+    # First, replace any URLs with random text of same length
+    text_with_replaced_urls = replace_urls_with_random_text(original_text)
+    
     new_text_parts = []
     # This regex splits the text into words and the spaces/punctuation between them.
-    tokens = re.split(r'(\s+)', original_text)
+    tokens = re.split(r'(\s+)', text_with_replaced_urls)
 
     for token in tokens:
         # Use the categorization function to better understand the token
@@ -118,7 +145,10 @@ def generate_random_text(original_text):
     if original_text.isspace():
         return original_text
     
-    clean_text = original_text.strip()
+    # First, replace any URLs with random text of same length
+    text_with_replaced_urls = replace_urls_with_random_text(original_text)
+    
+    clean_text = text_with_replaced_urls.strip()
     digits_only = re.sub(r'[^\d\.]', '', clean_text)
     
     if digits_only and (digits_only.isdigit() or ('.' in digits_only and digits_only.replace('.', '', 1).isdigit())):
@@ -177,6 +207,37 @@ def modify_docx_final(file_path, output_path):
 
         anonymize_all_comments(document)
 
+        # --- Change all external hyperlinks to point to spotdraft.com ---
+        def change_hyperlinks_to_spotdraft(document):
+            """
+            Change all external hyperlinks in the document to point to spotdraft.com
+            """
+            try:
+                if hasattr(document.part, 'rels'):
+                    # Get all hyperlink relationships
+                    hyperlink_rels = [rel for rel in document.part.rels.values() if 'hyperlink' in rel.reltype]
+                    
+                    for rel in hyperlink_rels:
+                        if hasattr(rel, 'target_ref') and rel.target_ref.startswith('http'):
+                            original_url = rel.target_ref
+                            print(f"Changing external hyperlink: {original_url} -> https://spotdraft.com")
+                            
+                            try:
+                                # Get the relationship ID
+                                rel_id = rel.rId
+                                # Remove the old relationship
+                                del document.part.rels[rel_id]
+                                # Add a new relationship pointing to spotdraft.com
+                                document.part.rels.add_hyperlink(rel_id, "https://spotdraft.com")
+                            except Exception as e:
+                                print(f"Could not update hyperlink relationship: {e}")
+                                pass
+            except Exception as e:
+                print(f"Error in hyperlink redirection: {e}")
+                pass
+
+        change_hyperlinks_to_spotdraft(document)
+
         # --- Authors mapping for tracked changes ---
         author_map = {}
         def get_fake_author(original_author):
@@ -186,6 +247,36 @@ def modify_docx_final(file_path, output_path):
 
         # --- Recursive anonymizer for all content ---
         def process_element_runs(element):
+            # Handle hyperlinks and change them to point to spotdraft.com
+            for hyperlink in element._element.findall('.//' + qn('w:hyperlink')):
+                # Get the relationship ID and change the target URL
+                rel_id = hyperlink.get(qn('r:id'))
+                if rel_id and hasattr(element.part, 'rels'):
+                    try:
+                        # Get the current target URL
+                        current_url = element.part.rels[rel_id].target_ref
+                        if current_url and current_url.startswith('http'):
+                            print(f"Changing hyperlink from: {current_url} -> https://spotdraft.com")
+                            
+                            # Remove the old relationship
+                            del element.part.rels[rel_id]
+                            
+                            # Create a new relationship pointing to spotdraft.com
+                            new_rel_id = f"rId{len(element.part.rels) + 1}"
+                            element.part.rels.add_hyperlink(new_rel_id, "https://spotdraft.com")
+                            
+                            # Update the hyperlink element to use the new relationship ID
+                            hyperlink.set(qn('r:id'), new_rel_id)
+                            
+                            # Also replace any URL text within the hyperlink with "spotdraft.com"
+                            for text_elem in hyperlink.findall('.//' + qn('w:t')):
+                                if text_elem.text and text_elem.text.strip():
+                                    # Replace any URL-like text with spotdraft.com
+                                    text_elem.text = "spotdraft.com"
+                    except Exception as e:
+                        print(f"Error processing hyperlink: {e}")
+                        pass
+            
             # Handle tracked changes (insertions/deletions)
             for tag_name in ['w:ins', 'w:del','w:moveFrom', 'w:moveTo']:
                 for change_tag in element._element.findall('.//' + qn(tag_name)):
