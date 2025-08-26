@@ -8,6 +8,29 @@ from docx.oxml.ns import qn
 # Initialize Faker for generating random content
 fake = Faker()
 
+def categorize_token(token):
+    """
+    Categorize a token to determine how it should be processed.
+    Returns: 'word', 'number', 'punctuation', or 'mixed'
+    """
+    if not token.strip():
+        return 'empty'
+    
+    alpha_count = len([c for c in token if c.isalpha()])
+    digit_count = len([c for c in token if c.isdigit()])
+    other_count = len([c for c in token if not c.isalpha() and not c.isdigit() and not c.isspace()])
+    
+    if alpha_count > 0 and digit_count == 0 and other_count == 0:
+        return 'word'
+    elif digit_count > 0 and alpha_count == 0 and other_count == 0:
+        return 'number'
+    elif alpha_count == 0 and digit_count == 0 and other_count > 0:
+        return 'punctuation'
+    elif alpha_count > 0 and (digit_count > 0 or other_count > 0):
+        return 'mixed'
+    else:
+        return 'other'
+
 def generate_length_preserving_text(original_text, padding_char='y'):
     """
     Generates random text that preserves length and casing by truncating or
@@ -20,16 +43,39 @@ def generate_length_preserving_text(original_text, padding_char='y'):
     # This regex splits the text into words and the spaces/punctuation between them.
     tokens = re.split(r'(\s+)', original_text)
 
-
     for token in tokens:
-        if token.strip() and token.isalpha(): # It's a word
+        # Use the categorization function to better understand the token
+        token_type = categorize_token(token)
+        
+        # Debug logging for mixed tokens (like company names)
+        if token_type == 'mixed':
+            print(f"Debug: Mixed token '{token}' - type: {token_type}, alpha_chars: {len([c for c in token if c.isalpha()])}, non_alpha_chars: {len([c for c in token if not c.isalpha()])}")
+        
+        # Process based on token type
+        if token_type in ['word', 'mixed']:
+            # Treat both pure words and mixed tokens (like AT&T) as words to anonymize
             length = len(token)
             fake_word = fake.word()
             
             if len(fake_word) > length:
                 new_word = fake_word[:length]
             elif len(fake_word) < length:
-                new_word = fake_word.ljust(length, padding_char)
+                # Use a more intelligent padding strategy
+                if length <= 3:
+                    # For very short words, just use the fake word as-is
+                    new_word = fake_word
+                else:
+                    # For longer words, try to create a more natural-looking word
+                    # by repeating parts of the fake word instead of single characters
+                    if len(fake_word) >= 2:
+                        # Repeat parts of the fake word to reach desired length
+                        repeat_part = fake_word[-2:] if len(fake_word) >= 2 else fake_word
+                        while len(fake_word) < length:
+                            fake_word += repeat_part
+                        new_word = fake_word[:length]
+                    else:
+                        # Fallback to minimal padding
+                        new_word = fake_word.ljust(length, padding_char)
             else:
                 new_word = fake_word
             
@@ -39,7 +85,7 @@ def generate_length_preserving_text(original_text, padding_char='y'):
                 new_text_parts.append(new_word.title())
             else:
                 new_text_parts.append(new_word.lower())
-        elif token.strip() and token.strip().isdigit():
+        elif token_type == 'number':
             length = len(token)
             
             # To avoid leading zeros in multi-digit numbers, handle first digit separately
